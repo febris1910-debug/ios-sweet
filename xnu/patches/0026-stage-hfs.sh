@@ -1,11 +1,19 @@
 #!/bin/bash
-# Stage Apple's open source HFS for the SWEET built-in filesystem (bsd/sweet_hfs).
-# dxb runs patches/*.sh from the XNU source root before applying *.patch.
+# Stage Apple's open source HFS for the SWEET/EMERALD built-in filesystem
+# (bsd/sweet_hfs). dxb runs patches/*.sh from the XNU source root before
+# applying *.patch.
+#
+# EMERALD reuses MASTER.arm64.sweet's sweet_hfs option (via MASTER.arm64.emerald).
+# Run 39382491296 failed with: sweet_hfs_compat.h: 'core/kext-config.h' not found
+# because this script previously exited early for MACHINE_CONFIG=EMERALD.
 set -euo pipefail
 
-[[ "${MACHINE_CONFIG:-}" == SWEET ]] || exit 0
+case "${MACHINE_CONFIG:-}" in
+SWEET|EMERALD) ;;
+*) exit 0 ;;
+esac
 [[ "${MACOS_VERSION:-}" == 13.5 ]] || {
-    echo 'SWEET HFS integration requires xnu-8796.141.3 (macOS 13.5)' >&2
+    echo 'SWEET/EMERALD HFS integration requires xnu-8796.141.3 (macOS 13.5)' >&2
     exit 1
 }
 [[ -f bsd/kern/bsd_init.c ]] || exit 1
@@ -52,4 +60,4 @@ PY
 # Kernel builds use -nostdinc; HFS's kext-config.h needs the SDK's target macros.
 hfs_sdk=$(xcrun --sdk macosx --show-sdk-path)
 cp "$hfs_sdk/usr/include/TargetConditionals.h" bsd/sweet_hfs/
-echo "Staged hfs-627.100.6 ($hfs_sha) for SWEET"
+echo "Staged hfs-627.100.6 ($hfs_sha) for ${MACHINE_CONFIG}"
