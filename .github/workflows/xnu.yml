@@ -16,7 +16,7 @@ on:
         description: RELEASE / DEVELOPMENT / DEBUG
         default: DEVELOPMENT
       machine_config:
-        description: "xnu MACHINE_CONFIG — use EMERALD for MT6789 (requires 0082+0083 patches)"
+        description: "xnu MACHINE_CONFIG — use EMERALD for MT6789 (requires 0082+0083+0084 patches)"
         default: EMERALD
         type: choice
         options:
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Require EMERALD machine-config + vtimer extern patches
+      - name: Require EMERALD machine-config + vtimer + linker MASTER patches
         if: env.MACHINE_CONFIG == 'EMERALD'
         run: |
           test -f xnu/patches/0082-emerald-machine-config.patch
@@ -68,7 +68,13 @@ jobs:
           test -f xnu/patches/0083-emerald-vtimer-extern-guard.patch
           grep -q '#if defined(SWEET)' xnu/patches/0083-emerald-vtimer-extern-guard.patch
           grep -q 'sweet_vtimer_intid' xnu/patches/0083-emerald-vtimer-extern-guard.patch
-          # Lexicographic order proof: 0017 < 0082 < 0083
+          echo "0083 vtimer extern guard present"
+          # 0084: MASTER.arm64.emerald enables nos_arm_asm/nos_arm_pmap (linker fix)
+          test -f xnu/patches/0084-emerald-linker-sources.patch
+          grep -q 'MASTER.arm64.emerald' xnu/patches/0084-emerald-linker-sources.patch
+          grep -q 'nos_arm_asm' xnu/patches/0084-emerald-linker-sources.patch
+          grep -q 'nos_arm_pmap' xnu/patches/0084-emerald-linker-sources.patch
+          # Lexicographic order proof: 0017 < 0082 < 0083 < 0084
           python3 - <<'PY'
           from pathlib import Path
           names = sorted(p.name for p in Path('xnu/patches').glob('*.patch'))
@@ -76,12 +82,13 @@ jobs:
               '0017-sweet-device-tree-virtual-timer-irq.patch',
               '0082-emerald-machine-config.patch',
               '0083-emerald-vtimer-extern-guard.patch',
+              '0084-emerald-linker-sources.patch',
           ]
           idx = [names.index(n) for n in need]
           assert idx == sorted(idx), (need, idx)
           print('patch_order_ok', *need)
           PY
-          echo "0083 vtimer extern guard present (after 0017 and 0082)"
+          echo "0084 MASTER.arm64.emerald linker sources present (after 0017/0082/0083)"
 
       - name: Fetch build script
         run: |
@@ -98,6 +105,7 @@ jobs:
           ls dxb/patches/0017-sweet-device-tree-virtual-timer-irq.patch
           ls dxb/patches/0082-emerald-machine-config.patch
           ls dxb/patches/0083-emerald-vtimer-extern-guard.patch
+          ls dxb/patches/0084-emerald-linker-sources.patch
 
       - name: Deps
         run: |

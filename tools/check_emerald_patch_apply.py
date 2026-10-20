@@ -27,6 +27,7 @@ CRITICAL = (
     "0017-sweet-device-tree-virtual-timer-irq.patch",
     "0082-emerald-machine-config.patch",
     "0083-emerald-vtimer-extern-guard.patch",
+    "0084-emerald-linker-sources.patch",
 )
 
 
@@ -146,7 +147,18 @@ def main() -> int:
         print("FAIL: EMERALD.h missing SWEET / INTID 27", file=sys.stderr)
         return 1
 
-    print("VERIFY_OK: 0017 -> ... -> 0082 -> 0083 applied; protos.h uses defined(SWEET)")
+    master_e = xnu / "config" / "MASTER.arm64.emerald"
+    if not master_e.is_file():
+        print("FAIL: MASTER.arm64.emerald missing after 0084", file=sys.stderr)
+        return 1
+    me = master_e.read_text(encoding="utf-8", errors="replace")
+    if "nos_arm_asm" not in me or "nos_arm_pmap" not in me:
+        print("FAIL: MASTER.arm64.emerald missing nos_arm_asm/nos_arm_pmap", file=sys.stderr)
+        return 1
+    p84 = patch_dir / "0084-emerald-linker-sources.patch"
+    print(f"0084_sha256={sha256(p84)}")
+
+    print("VERIFY_OK: 0017 -> 0082 -> 0083 -> 0084; protos.h defined(SWEET); MASTER.emerald nos_arm_*")
     print("NOTE: this is apply-check only — not a full XNU kernel compile")
     return 0 if not failed else 1
 
