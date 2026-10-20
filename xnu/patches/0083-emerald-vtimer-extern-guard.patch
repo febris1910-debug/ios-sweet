@@ -1,0 +1,26 @@
+From: emerald port
+Subject: [PATCH] emerald: declare sweet_vtimer_intid under defined(SWEET)
+
+0017 defined the variable and sleh.c use under #if defined(SWEET), but the
+protos.h extern used #if defined(ARM64_BOARD_CONFIG_SWEET) only. EMERALD
+sets ARM64_BOARD_CONFIG_EMERALD and #define SWEET 1 (0082 EMERALD.h), so
+sleh.c saw an undeclared identifier on DEVELOPMENT^ARM64^EMERALD.
+
+Align the extern guard with pe_fiq.c / sleh.c. SWEET is only #define'd by
+SWEET.h / EMERALD.h - not by VMAPPLE/T810x/etc. board configs.
+
+Proven CI failure (run 39378467932):
+  osfmk/arm64/sleh.c:1870:15: error: use of undeclared identifier 'sweet_vtimer_intid'
+
+---
+--- a/pexpert/pexpert/arm/protos.h
++++ b/pexpert/pexpert/arm/protos.h
+@@ -36,7 +36,7 @@
+ int uart_getc(void);
+ 
+ void pe_init_fiq(void);
+-#if defined(ARM64_BOARD_CONFIG_SWEET)
++#if defined(SWEET)
+ extern uint32_t sweet_vtimer_intid;
+ #endif
+

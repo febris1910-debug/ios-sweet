@@ -16,7 +16,7 @@ on:
         description: RELEASE / DEVELOPMENT / DEBUG
         default: DEVELOPMENT
       machine_config:
-        description: "xnu MACHINE_CONFIG — use EMERALD for MT6789 (requires 0082 patch)"
+        description: "xnu MACHINE_CONFIG — use EMERALD for MT6789 (requires 0082+0083 patches)"
         default: EMERALD
         type: choice
         options:
@@ -57,13 +57,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Require EMERALD machine-config patch
+      - name: Require EMERALD machine-config + vtimer extern patches
         if: env.MACHINE_CONFIG == 'EMERALD'
         run: |
           test -f xnu/patches/0082-emerald-machine-config.patch
           grep -q 'SUPPORTED_ARM64_MACHINE_CONFIGS.*EMERALD' xnu/patches/0082-emerald-machine-config.patch
           grep -q 'ARM64_BOARD_CONFIG_EMERALD' xnu/patches/0082-emerald-machine-config.patch
           echo "0082 EMERALD patch present"
+          # 0083 must sort after 0017 and 0082 (bash *.patch is lexicographic)
+          test -f xnu/patches/0083-emerald-vtimer-extern-guard.patch
+          grep -q '#if defined(SWEET)' xnu/patches/0083-emerald-vtimer-extern-guard.patch
+          grep -q 'sweet_vtimer_intid' xnu/patches/0083-emerald-vtimer-extern-guard.patch
+          # Lexicographic order proof: 0017 < 0082 < 0083
+          python3 - <<'PY'
+          from pathlib import Path
+          names = sorted(p.name for p in Path('xnu/patches').glob('*.patch'))
+          need = [
+              '0017-sweet-device-tree-virtual-timer-irq.patch',
+              '0082-emerald-machine-config.patch',
+              '0083-emerald-vtimer-extern-guard.patch',
+          ]
+          idx = [names.index(n) for n in need]
+          assert idx == sorted(idx), (need, idx)
+          print('patch_order_ok', *need)
+          PY
+          echo "0083 vtimer extern guard present (after 0017 and 0082)"
 
       - name: Fetch build script
         run: |
@@ -71,12 +89,15 @@ jobs:
           git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
           git -C dxb checkout -q FETCH_HEAD
           # 12.5-14.3 use the top-level patches dir; ours go next to blacktop's
+          # blacktop build.sh: for PATCH in "${PATCH_DIR}"/*.patch  -> lexicographic
           cp xnu/patches/*.patch xnu/patches/*.sh dxb/patches/
           # libfirehose_kernel is built arm64e-only; SWEET/EMERALD kernels are plain arm64
           sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' dxb/build.sh
           grep -c 'VALID_ARCHS="x86_64 arm64e arm64"' dxb/build.sh
-          ls dxb/patches/0082-emerald-machine-config.patch
           ls dxb/patches/0004-sweet-machine-config.patch
+          ls dxb/patches/0017-sweet-device-tree-virtual-timer-irq.patch
+          ls dxb/patches/0082-emerald-machine-config.patch
+          ls dxb/patches/0083-emerald-vtimer-extern-guard.patch
 
       - name: Deps
         run: |
