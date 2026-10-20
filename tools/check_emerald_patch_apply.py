@@ -28,6 +28,7 @@ CRITICAL = (
     "0082-emerald-machine-config.patch",
     "0083-emerald-vtimer-extern-guard.patch",
     "0084-emerald-linker-sources.patch",
+    "0085-emerald-console-log-append.patch",
 )
 
 
@@ -157,8 +158,36 @@ def main() -> int:
         return 1
     p84 = patch_dir / "0084-emerald-linker-sources.patch"
     print(f"0084_sha256={sha256(p84)}")
+    p85 = patch_dir / "0085-emerald-console-log-append.patch"
+    print(f"0085_sha256={sha256(p85)}")
 
-    print("VERIFY_OK: 0017 -> 0082 -> 0083 -> 0084; protos.h defined(SWEET); MASTER.emerald nos_arm_*")
+    clog = xnu / "bsd" / "dev" / "sweet_console_log.c"
+    if not clog.is_file():
+        print("FAIL: sweet_console_log.c missing after 0085", file=sys.stderr)
+        return 1
+    ct = clog.read_text(encoding="utf-8", errors="replace")
+    if "#if defined(ARM64_BOARD_CONFIG_EMERALD)" not in ct:
+        print("FAIL: sweet_console_log.c not EMERALD-guarded", file=sys.stderr)
+        return 1
+    if "sweet_log_append" not in ct:
+        print("FAIL: sweet_console_log.c missing sweet_log_append", file=sys.stderr)
+        return 1
+    if "ufs_write_blocks" in ct or "sweet_ufs_lock" in ct:
+        print("FAIL: sweet_console_log.c must not pull Qualcomm UFS", file=sys.stderr)
+        return 1
+    ufs = xnu / "bsd" / "dev" / "sweet_ufs.c"
+    ut = ufs.read_text(encoding="utf-8", errors="replace")
+    if "#if defined(ARM64_BOARD_CONFIG_SWEET)" not in ut:
+        print("FAIL: sweet_ufs.c lost SWEET-only guard", file=sys.stderr)
+        return 1
+    if "ARM64_BOARD_CONFIG_EMERALD" in ut:
+        print("FAIL: sweet_ufs.c must stay SWEET-only (no EMERALD widen)", file=sys.stderr)
+        return 1
+
+    print(
+        "VERIFY_OK: 0017 -> 0082 -> 0083 -> 0084 -> 0085; "
+        "EMERALD console log append; UFS still SWEET-only"
+    )
     print("NOTE: this is apply-check only — not a full XNU kernel compile")
     return 0 if not failed else 1
 

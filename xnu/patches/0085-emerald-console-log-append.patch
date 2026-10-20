@@ -1,0 +1,76 @@
+From: emerald port
+Subject: [PATCH] emerald: in-memory sweet_log_append without Qualcomm UFS
+
+serial_console (0084) references sweet_log_append on EMERALD, but the
+definition in sweet_ufs.c is behind ARM64_BOARD_CONFIG_SWEET (UFSHCI).
+Add a small EMERALD-only TU with the never-blocking ring append only.
+Does not enable sweet_ufs, sweet_usb, or partition log flush.
+
+---
+diff --git a/bsd/dev/sweet_console_log.c b/bsd/dev/sweet_console_log.c
+new file mode 100644
+--- /dev/null
++++ b/bsd/dev/sweet_console_log.c
+@@ -0,0 +1,39 @@
++/*
++ * EMERALD in-memory console ring (sweet_log_append).
++ *
++ * serial_console.c (0084) calls sweet_log_append under
++ * ARM64_BOARD_CONFIG_SWEET || ARM64_BOARD_CONFIG_EMERALD. On SWEET the
++ * definition lives in bsd/dev/sweet_ufs.c with optional UFS persistence.
++ * That entire file is Qualcomm-UFS-specific and stays SWEET-only.
++ *
++ * Actions run 39384205035 failed linking EMERALD with only
++ * _sweet_log_append undefined. This TU provides the same never-blocking
++ * ring append without staging UFSHCI, GPT, or partition flush threads.
++ */
++#if defined(ARM64_BOARD_CONFIG_EMERALD)
++
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <libkern/libkern.h>
++#include <machine/atomic.h>
++
++#define SWEET_LOG_SIZE  (4u << 20)
++
++static char sweet_log_ring[SWEET_LOG_SIZE];
++static uint64_t _Atomic sweet_log_total;
++
++void sweet_log_append(const char *c, int size);
++
++void
++sweet_log_append(const char *c, int size)
++{
++	if (size <= 0) {
++		return;
++	}
++	uint64_t at = os_atomic_add_orig(&sweet_log_total, (uint64_t)size, relaxed);
++	for (int i = 0; i < size; i++) {
++		sweet_log_ring[(at + (uint64_t)i) % SWEET_LOG_SIZE] = c[i];
++	}
++}
++
++#endif /* ARM64_BOARD_CONFIG_EMERALD */
+diff --git a/bsd/conf/files b/bsd/conf/files
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -105,6 +105,7 @@ bsd/dev/random/randomdev.c		standard
+ 
+ bsd/dev/memdev.c			standard
+ bsd/dev/sweet_ufs.c			standard
++bsd/dev/sweet_console_log.c		standard
+ bsd/dev/sweet_sample.c			standard
+ bsd/dev/sweet_keys.c			standard
+ bsd/dev/sweet_touch.c			standard
+diff --git a/osfmk/console/serial_console.c b/osfmk/console/serial_console.c
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -267,7 +267,7 @@ _cnputc(char c, bool poll)
+  * @param size The number of characters to print to the console.
+  */
+ #if defined(ARM64_BOARD_CONFIG_SWEET) || defined(ARM64_BOARD_CONFIG_EMERALD)
+-extern void sweet_log_append(const char *c, int size);  /* bsd/dev/sweet_ufs.c */
++extern void sweet_log_append(const char *c, int size);  /* SWEET: sweet_ufs.c; EMERALD: sweet_console_log.c */
+ /*
+  * Set by AppleCLCD (boot-arg sweetfb_noconsole=1) once the GUI presents:
+  * console text still goes to the persistent log, but is not drawn over
